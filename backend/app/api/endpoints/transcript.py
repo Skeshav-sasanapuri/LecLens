@@ -1,7 +1,7 @@
 # backend/app/api/endpoints/transcript.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.services import youtube_transcript, video_processing
+from app.services import youtube_transcript, transcript_extraction
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ def fetch_transcript(request: TranscriptRequest):
         if request.youtube_url:
             transcript = youtube_transcript.get_transcript(request.youtube_url)
         elif request.video_file_path:
-            transcript = video_processing.get_transcript_from_file(request.video_file_path)
+            transcript = transcript_extraction.get_transcript_from_file(request.video_file_path)
         else:
             raise ValueError("Either 'youtube_url' or 'video_file_path' must be provided.")
         return {"transcript": transcript}
