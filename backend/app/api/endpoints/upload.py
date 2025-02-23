@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import uuid  # For generating session IDs
-from ./../services import youtube_transcript, transcript_extraction
-from ./../cache import Cache
+from ...services import youtube_transcript, transcript_extraction
+from ..cache import Cache
 
 upload_bp = Blueprint('upload', __name__)
 

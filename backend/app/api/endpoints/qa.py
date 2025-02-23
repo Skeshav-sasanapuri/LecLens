@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from ./../.services import llm_wrapper
+from ...services import llm_wrapper
 
 question_bp = Blueprint('question', __name__)
 
