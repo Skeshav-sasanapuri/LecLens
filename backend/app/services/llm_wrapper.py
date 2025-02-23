@@ -59,6 +59,7 @@ def generate_notes(transcript:str) -> str:
     return response
 
 def generate_quiz(transcript:str, difficulty_level:str) -> list:
+    print("Generating quiz")
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-pro")
     prompt = get_prompt(f"{home_dir}//data//prompts//quiz.txt",transcript,difficulty_level)
@@ -70,28 +71,35 @@ def generate_quiz(transcript:str, difficulty_level:str) -> list:
         answer_choices = get_quiz_answers(response)
 
     questions = create_quizzes(response,answer_choices)
+
     
     return questions
 
 
 def create_quizzes(response:str,answer_choices: list) -> None:
-    question_pattern = r"\*\*Question (\d+):\*\*(.*?)\s*(A\..*?)\s*(B\..*?)\s*(C\..*?)\s*(D\..*?)\s*\*?\*?Correct answer: ([A-D])\*?\*?"
-    matches = re.findall(question_pattern, response, re.DOTALL)
-    questions = []
-    for match in matches:
-        question_number = match[0]
-        question_text = match[1].strip()
-        options = [match[2].strip(), match[3].strip(), match[4].strip(), match[5].strip()]
-        correct_answer = match[6]
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-pro")
+    prompt = get_prompt(f"{home_dir}//data//prompts//format_quiz.txt",response,"")
+    response = model.generate_content(prompt)
+    response = extract_text(response)
+    return response
+    # question_pattern = r"\*\*Question (\d+):\*\*(.*?)\s*(A\..*?)\s*(B\..*?)\s*(C\..*?)\s*(D\..*?)\s*\*?\*?Correct answer: ([A-D])\*?\*?"
+    # matches = re.findall(question_pattern, response, re.DOTALL)
+    # questions = []
+    # for match in matches:
+    #     question_number = match[0]
+    #     question_text = match[1].strip()
+    #     options = [match[2].strip(), match[3].strip(), match[4].strip(), match[5].strip()]
+    #     correct_answer = match[6]
     
-        question_data = {
-            "question": question_text,
-            "options": options,
-            "answer": correct_answer
-        }
+    #     question_data = {
+    #         "question": question_text,
+    #         "options": options,
+    #         "answer": correct_answer
+    #     }
     
-        questions.append(question_data)
-    return questions
+    #     questions.append(question_data)
+    # return questions
 
 
 def get_quiz_answers(response: str) -> list:
@@ -120,7 +128,7 @@ def get_prompt(file:str,transcript:str,user_parameter: str) -> str:
 def main():
 
     question = " What is the role of charge interactions in the phenomenon of light refraction?"
-    transcript = read_transcript("KTzGBJPuJwM_transcript.txt")
+    transcript = read_transcript("fcfQkxwz4Oo_transcript.txt")
     # answer = get_context_for_question(question, transcript)
     # print(answer)
     # answer = answer_user_query(transcript, question)
