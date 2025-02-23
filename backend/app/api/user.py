@@ -4,7 +4,7 @@ class User:
         self.sessionId = sessionId
         self.transcript_timestamps = None
         self.transcript = None
-        self.conversations = None
+        self.conversations = []
 
     def get_sessionId(self):
         return self.sessionId
