@@ -1,5 +1,5 @@
 import uuid
-from user import User
+from backend.app.api.user import User
 
 class Cache:
 

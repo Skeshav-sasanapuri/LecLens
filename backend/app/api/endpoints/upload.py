@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import uuid  # For generating session IDs
-from ...services import youtube_transcript, transcript_extraction
-from ..cache import Cache
+from backend.app.services import youtube_transcript, transcript_extraction
+from backend.app.api.cache import Cache
 
 upload_bp = Blueprint('upload', __name__)
 
@@ -19,10 +19,10 @@ def upload_video():
     session_id = user.get_sessionId()  # remove this once teja has fixed session id
 
 
-    if data.youtube_url:
-        transcript_time_stamps, transcript_str = youtube_transcript.get_transcript(data.youtube_url)
+    if youtube_url:
+        transcript_time_stamps, transcript_str = youtube_transcript.get_transcript(youtube_url)
     else:
-        transcript_time_stamps, transcript_str = transcript_extraction.get_transcript_from_file(data.video_file)
+        transcript_time_stamps, transcript_str = transcript_extraction.get_transcript_from_file(video_file)
 
     user.set_transcript(transcript_str)
     user.set_transcript_timestamps(transcript_time_stamps)
