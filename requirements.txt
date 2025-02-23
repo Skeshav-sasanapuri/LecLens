@@ -2,6 +2,7 @@ torch
 transformers
 bitsandbytes
 accelerate
+google-generativeai
 fastapi==0.115.8
 youtube-transcript-api==0.6.3
 pydantic==2.10.1
