@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from redis_config import redis_client
 import uuid  # For generating session IDs
+from app.services import youtube_transcript, transcript_extraction
 
 upload_bp = Blueprint('upload', __name__)
 
@@ -14,13 +14,12 @@ def upload_video():
         return jsonify({"error": "Provide either a YouTube URL or a video file"}), 400
 
     # Generate session ID
-    session_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())  # remove this once teja has fixed session id
 
-    # Simulate transcript generation and store in Redis
-    transcript = {
-        "I realized recently that I didn't really understand how a prism works, ": [0.0],
-        "and I suspect most people out there don't either.": [3.703]
-    }
-    redis_client.set(session_id, json.dumps(transcript))  # Store transcript in Redis
+
+    if data.youtube_url:
+        transcript_time_stamp, transcript_str = youtube_transcript.get_transcript(data.youtube_url)
+    elif data.video_file:
+        transcript_time_stamp, transcript_str = transcript_extraction.get_transcript_from_file(data.video_file)
 
     return jsonify({"session_id": session_id, "message": "Video processed and transcript stored."})
