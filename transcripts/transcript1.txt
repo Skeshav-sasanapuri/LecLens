@@ -1,0 +1,17 @@
+Lecture on Artificial Intelligence - Week 1
+
+Speaker: Dr. John Smith
+
+Welcome, everyone, to Week 1 of our course on Artificial Intelligence. In this week’s lecture, we will discuss the basics of AI, its history, and some fundamental concepts that will be essential for your understanding in the coming weeks.
+
+Artificial Intelligence, often abbreviated as AI, refers to the simulation of human intelligence in machines that are programmed to think and learn. The field of AI was born in the 1950s when Alan Turing, one of the pioneers of computing, proposed the idea of machines that could simulate human intelligence. Turing is also known for the Turing Test, a measure of a machine’s ability to exhibit intelligent behavior.
+
+In the 1950s and 1960s, AI was mainly focused on symbolic approaches. Researchers focused on creating systems that used rules and logic to process information. However, these early systems were limited in their ability to handle real-world complexity. By the 1980s, a new approach emerged: Machine Learning.
+
+Machine Learning, a subfield of AI, involves training machines to recognize patterns in data and make decisions without being explicitly programmed. One of the most famous early examples of machine learning is IBM’s Deep Blue, which defeated the world chess champion, Garry Kasparov, in 1997. This victory demonstrated the power of AI in solving complex problems.
+
+Over the past few decades, AI has advanced rapidly. Today, AI systems can be found in a wide range of applications, from self-driving cars to medical diagnosis, from virtual assistants like Siri and Alexa to recommendation systems on websites like Netflix and Amazon. Machine learning techniques, particularly deep learning, have played a significant role in this rapid advancement.
+
+Now that we have a basic understanding of AI and its history, let's dive deeper into the main types of AI. There are three main types of AI: Narrow AI, General AI, and Superintelligent AI.
+
+Narrow AI is the most common type of AI today. It is designed to perform a specific task, such as facial recognition, language translation, or playing a game. Narrow AI does not possess general intelligence and cannot perform tasks outside its specific domain.

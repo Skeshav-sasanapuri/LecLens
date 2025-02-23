@@ -1,4 +1,11 @@
+torch
+transformers
+bitsandbytes
+accelerate
+google-generativeai
 fastapi==0.115.8
 youtube-transcript-api==0.6.3
 pydantic==2.10.1
 regex==2024.5.15
+openai=1.64.0
+dotenv-python=0.0.1
