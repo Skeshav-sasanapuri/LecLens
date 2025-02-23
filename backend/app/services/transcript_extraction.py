@@ -34,7 +34,7 @@ def format_transcript(transcripts):
             stamp_map[transcript.text] = [transcript.start]
         else:
              stamp_map[transcript.text].append(transcript.start)
-    return transcript.text, stamp_map
+    return stamp_map, transcript.text
 
 def get_audio_data(file_path):
     """
