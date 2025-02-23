@@ -1,17 +1,20 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart'; // <--- Add this
+import 'dart:io' show File, Directory, Platform;
+// ignore: unused_import
+import 'dart:typed_data';
+import 'dart:ui_web' as ui;
+import 'package:chewie/chewie.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for rootBundle
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:http/http.dart' as http;
 import 'package:universal_html/html.dart' as html;
+import 'package:video_player/video_player.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../components/common_background.dart';
@@ -36,7 +39,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _videoReady = false;
   bool _isYouTube = false;
 
-  // For local/network videos
+  // For local/network videos (mobile/desktop)
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   Future<void>? _initializeVideoFuture;
@@ -55,6 +58,9 @@ class _ChatPageState extends State<ChatPage> {
   // This flag ensures the dummy chat is shown until user sends a new query.
   // After the first user query, we clear the dummy chat.
   bool _dummyChatActive = true; // <--- WHEN TRUE, SHOW DUMMY CHAT
+
+  // If on web, and we pick a local file, we might store the blob or data URL here:
+  String? _webLocalVideoUrl;
 
   @override
   void initState() {
@@ -78,7 +84,7 @@ class _ChatPageState extends State<ChatPage> {
   // (A) Load Sample Chat (DUMMY) - Remove once real API is functional
   // ------------------------------------------------------------------------
   Future<void> _loadSampleChatFromJson() async {
-    if (!_dummyChatActive) return; // if somehow turned off, skip loading
+    if (!_dummyChatActive) return;
     try {
       final String chatJson =
           await rootBundle.loadString('assets/chat/sample_chat.json');
@@ -93,7 +99,6 @@ class _ChatPageState extends State<ChatPage> {
       if (kDebugMode) {
         print("Error loading sample chat JSON: $e");
       }
-      // If we can't load, just show a minimal default
       setState(() {
         _sessionId = "test_session_123";
         _chatMessages = [
@@ -117,7 +122,6 @@ class _ChatPageState extends State<ChatPage> {
         _textToTimestampMap = data.map((k, v) => MapEntry(k, v.toString()));
       });
 
-      // Build _transcript from that map
       final items = <TranscriptItem>[];
       _textToTimestampMap.forEach((content, time) {
         items.add(TranscriptItem(time: time, content: content));
@@ -149,8 +153,10 @@ class _ChatPageState extends State<ChatPage> {
       _isLoading = true;
       _videoReady = false;
       _isYouTube = _isYouTubeLink(link);
+      _webLocalVideoUrl = null; // reset
     });
 
+    // Dispose old controllers
     _chewieController?.dispose();
     _chewieController = null;
     _videoController?.dispose();
@@ -162,7 +168,6 @@ class _ChatPageState extends State<ChatPage> {
       if (_isYouTube) {
         final videoId = _extractYouTubeVideoId(link);
         if (videoId == null) throw Exception("Invalid YouTube link");
-
         _youtubeController = YoutubePlayerController(
           params: const YoutubePlayerParams(showFullscreenButton: true),
         )..loadVideoById(videoId: videoId);
@@ -172,30 +177,37 @@ class _ChatPageState extends State<ChatPage> {
           _isLoading = false;
         });
       } else {
-        VideoPlayerController tmpController;
-        if (_isLocalFile(link)) {
-          // e.g. file://... or absolute
-          final filePath = link.startsWith('file://') ? link.substring(7) : link;
-          tmpController = VideoPlayerController.file(File(filePath));
+        // If not YouTube:
+        if (kIsWeb) {
+          // On web, we cannot do VideoPlayerController.file(File(...)) for blob or file://
+          // So we store the link in _webLocalVideoUrl if it starts with 'blob:' or 'file:'
+          if (link.startsWith('blob:') || link.startsWith('file:')) {
+            // We'll use _LocalWebVideoPlayer fallback
+            setState(() {
+              _webLocalVideoUrl = link;
+              _videoReady = true;
+              _isLoading = false;
+            });
+            return; // Don't proceed with normal Chewie
+          }
+          // Otherwise, if it's a normal http or https link, we can do network
+          if (link.startsWith('http')) {
+            await _setupChewieNetwork(link);
+          } else {
+            throw Exception('Unsupported local link on web: $link');
+          }
         } else {
-          tmpController = VideoPlayerController.networkUrl(Uri.parse(link));
+          // On mobile/desktop
+          if (_isLocalFile(link)) {
+            final filePath =
+                link.startsWith('file://') ? link.substring(7) : link;
+            await _setupChewieFile(filePath);
+          } else if (link.startsWith('http')) {
+            await _setupChewieNetwork(link);
+          } else {
+            throw Exception('Unrecognized link format: $link');
+          }
         }
-
-        _videoController = tmpController;
-        _initializeVideoFuture = _videoController!.initialize();
-        await _initializeVideoFuture;
-        if (!mounted) return;
-
-        _chewieController = ChewieController(
-          videoPlayerController: _videoController!,
-          autoPlay: false,
-          looping: false,
-        );
-
-        setState(() {
-          _videoReady = true;
-          _isLoading = false;
-        });
       }
     } catch (e) {
       if (kDebugMode) {
@@ -211,8 +223,45 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  /// Opens a file picker so the user can select a local video file.
-  /// Then automatically loads it.
+  Future<void> _setupChewieFile(String filePath) async {
+    final tmpController = VideoPlayerController.file(File(filePath));
+    _videoController = tmpController;
+    _initializeVideoFuture = _videoController!.initialize();
+    await _initializeVideoFuture;
+    if (!mounted) return;
+
+    _chewieController = ChewieController(
+      videoPlayerController: _videoController!,
+      autoPlay: false,
+      looping: false,
+    );
+
+    setState(() {
+      _videoReady = true;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _setupChewieNetwork(String url) async {
+    final tmpController = VideoPlayerController.networkUrl(Uri.parse(url));
+    _videoController = tmpController;
+    _initializeVideoFuture = _videoController!.initialize();
+    await _initializeVideoFuture;
+    if (!mounted) return;
+
+    _chewieController = ChewieController(
+      videoPlayerController: _videoController!,
+      autoPlay: false,
+      looping: false,
+    );
+
+    setState(() {
+      _videoReady = true;
+      _isLoading = false;
+    });
+  }
+
+  /// Let user pick a local video via file picker
   Future<void> _pickLocalVideo() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -222,19 +271,17 @@ class _ChatPageState extends State<ChatPage> {
       if (result != null && result.files.isNotEmpty) {
         final path = result.files.single.path;
         if (path != null) {
-          // Convert to file:// schema for consistency
+          // Convert to file://
           final fileUri = 'file://$path';
-          // Put it in the text field
           setState(() {
             _videoLinkController.text = fileUri;
           });
-          // Then load
           await _loadVideoFromLink();
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Error picking file: $e");
+        print('Error picking file: $e');
       }
     }
   }
@@ -248,7 +295,6 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   bool _isLocalFile(String link) {
-    // e.g. 'file://' or absolute path
     return link.startsWith("file://") || File(link).isAbsolute;
   }
 
@@ -258,6 +304,13 @@ class _ChatPageState extends State<ChatPage> {
   void _seekVideoToTime(String time) {
     if (_isYouTube && _youtubeController != null) {
       _seekYouTube(time);
+    } else if (kIsWeb && _webLocalVideoUrl != null) {
+      // If we are using the HTML fallback, we can't programmatically set the time easily
+      // without more advanced JavaScript bridging. We might skip or do partial bridging.
+      // For now, we do nothing or show a message:
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seeking not implemented for web local fallback.')),
+      );
     } else {
       _seekChewie(time);
     }
@@ -303,16 +356,12 @@ class _ChatPageState extends State<ChatPage> {
     final userMessage = _chatController.text.trim();
     if (userMessage.isEmpty) return;
 
-    // If dummy chat is active, remove it now (once the user sends a message).
-    // AFTER API is functional, we can remove this logic.
     if (_dummyChatActive) {
       setState(() {
         _chatMessages.clear();
         _dummyChatActive = false;
       });
     }
-
-    // Immediately show user message
     setState(() {
       _chatMessages.add("User: $userMessage");
       _chatController.clear();
@@ -322,13 +371,11 @@ class _ChatPageState extends State<ChatPage> {
     //  - session_id
     //  - user_message
     //  - filepath = _videoUrl
-    // For demonstration, we do a dummy response:
     await Future.delayed(const Duration(seconds: 1));
     final updatedSessionId = _sessionId ?? "test_session_123";
 
     final updatedConversation = [
       ..._chatMessages,
-      // Show that we're including the file path in the conversation for debugging
       "AI: The server acknowledges your file path: ${_videoUrl ?? 'no file path'}",
       "AI: This is a dummy response from the server."
     ];
@@ -431,7 +478,7 @@ class _ChatPageState extends State<ChatPage> {
               Expanded(
                 child: Row(
                   children: [
-                    // LEFT: Video
+                    // LEFT: Video region
                     Expanded(
                       flex: 2,
                       child: Container(
@@ -453,38 +500,50 @@ class _ChatPageState extends State<ChatPage> {
                                 const SizedBox(width: 8),
                                 ElevatedButton(
                                   onPressed: _loadVideoFromLink,
-                                  child: const Text("Load YouTube Video"),
+                                  child: const Text("Load Video"),
                                 ),
                                 const SizedBox(width: 8),
                                 ElevatedButton(
                                   onPressed: _pickLocalVideo,
-                                  child: const Text("Upload Video File"),
+                                  child: const Text("Upload"),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 8),
 
-                            // Loading
                             if (_isLoading)
                               const Center(child: CircularProgressIndicator()),
 
-                            // Player
+                            // Player region
                             if (_videoReady) ...[
                               Expanded(
-                                child: _isYouTube && _youtubeController != null
-                                    ? YoutubePlayer(
-                                        controller: _youtubeController!,
-                                        aspectRatio: 16 / 9,
-                                      )
-                                    : _chewieController != null
-                                        ? AspectRatio(
-                                            aspectRatio:
-                                                _videoController!.value.aspectRatio,
-                                            child: Chewie(
-                                              controller: _chewieController!,
-                                            ),
-                                          )
-                                        : const Center(child: Text('Video Error')),
+                                child: Builder(builder: (context) {
+                                  // 1) If it's YouTube, show YT iframe player
+                                  if (_isYouTube && _youtubeController != null) {
+                                    return YoutubePlayer(
+                                      controller: _youtubeController!,
+                                      aspectRatio: 16 / 9,
+                                    );
+                                  }
+                                  // 2) If web local fallback
+                                  if (kIsWeb && _webLocalVideoUrl != null) {
+                                    return _LocalWebVideoPlayer(
+                                      videoUrl: _webLocalVideoUrl!,
+                                    );
+                                  }
+                                  // 3) Otherwise, Chewie (mobile/desktop or web network)
+                                  if (_chewieController != null) {
+                                    return AspectRatio(
+                                      aspectRatio:
+                                          _videoController!.value.aspectRatio,
+                                      child: Chewie(
+                                        controller: _chewieController!,
+                                      ),
+                                    );
+                                  }
+                                  // If we reach here, no player available
+                                  return const Center(child: Text('Video Error'));
+                                }),
                               ),
                               const SizedBox(height: 8),
                               if (!_isYouTube)
@@ -498,7 +557,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // RIGHT: Chat
+                    // RIGHT: Chat region
                     Expanded(
                       flex: 1,
                       child: Container(
@@ -544,7 +603,6 @@ class _ChatPageState extends State<ChatPage> {
                                 },
                               ),
                             ),
-                            // chat input
                             Row(
                               children: [
                                 Expanded(
@@ -612,5 +670,50 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+}
+
+/// This widget uses an HTML <video> element to play a local file
+/// on Flutter Web. By default, the standard video_player plugin can't handle
+/// file:// or blob: URLs on web.
+class _LocalWebVideoPlayer extends StatefulWidget {
+  final String videoUrl;
+  const _LocalWebVideoPlayer({Key? key, required this.videoUrl}) : super(key: key);
+
+  @override
+  State<_LocalWebVideoPlayer> createState() => _LocalWebVideoPlayerState();
+}
+
+class _LocalWebVideoPlayerState extends State<_LocalWebVideoPlayer> {
+  late final String _elementId;
+
+  @override
+  void initState() {
+    super.initState();
+    _elementId = 'video-${DateTime.now().millisecondsSinceEpoch}';
+    _registerViewFactory(_elementId, widget.videoUrl);
+  }
+
+  void _registerViewFactory(String viewId, String url) {
+    ui.platformViewRegistry.registerViewFactory(viewId, (int _) {
+      final video = html.VideoElement()
+        ..src = url
+        ..controls = true
+        ..autoplay = true       // Let it attempt to autoplay
+        ..muted = true          // Mute so autoplay is allowed
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.border = 'none';
+
+      // Optionally remove forced .play() to rely on user pressing 'Play'
+      // video.onCanPlay.listen((_) => video.play());
+
+      return video;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return HtmlElementView(viewType: _elementId);
   }
 }
