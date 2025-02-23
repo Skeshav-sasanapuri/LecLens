@@ -20,10 +20,11 @@ def upload_video():
 
 
     if data.youtube_url:
-        transcript_time_stamp, transcript_str = youtube_transcript.get_transcript(data.youtube_url)
-    elif data.video_file:
-        transcript_time_stamp, transcript_str = transcript_extraction.get_transcript_from_file(data.video_file)
+        transcript_time_stamps, transcript_str = youtube_transcript.get_transcript(data.youtube_url)
+    else:
+        transcript_time_stamps, transcript_str = transcript_extraction.get_transcript_from_file(data.video_file)
 
-
+    user.set_transcript(transcript_str)
+    user.set_transcript_timestamps(transcript_time_stamps)
 
     return jsonify({"session_id": session_id, "message": "Video processed and transcript stored."})

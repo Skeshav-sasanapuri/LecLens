@@ -2,7 +2,6 @@ from flask import Flask
 from api.notes import notes_bp
 from api.qa import question_bp
 from api.quiz import quiz_bp
-from api.transcript import transcript_bp
 from api.upload import upload_bp
 
 app = Flask(__name__)
