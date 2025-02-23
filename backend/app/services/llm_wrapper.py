@@ -5,8 +5,7 @@ import google.generativeai as genai
 import re
 import os
 
-
-home_dir = "C:\\Users\\kesha\\PycharmProjects\\hackathon\\brickhack_2025"
+home_dir = "C:\Users\tejak\OneDrive\Documents\RIT\projects\brickhack_2025"
 model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
 model_dir = f"{home_dir}\\models"
 transcript_dir = f"{home_dir}\\transcripts"

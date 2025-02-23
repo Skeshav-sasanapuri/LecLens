@@ -2,14 +2,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Directory, Platform;
-// import 'dart:math';
 import 'dart:ui_web' as ui;
 
 import 'package:chewie/chewie.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
-// import 'package:flutter/services.dart'; // for rootBundle
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,13 +15,19 @@ import 'package:universal_html/html.dart' as html;
 import 'package:video_player/video_player.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
+// --- PDF & printing imports ---
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+// ignore: unused_import
+import 'package:printing/printing.dart';
+
 import '../components/common_background.dart';
 import '../transcripts/transcript_item.dart';
 
 /// A transcript item includes [time] for display and [content].
 /// Time is something like "02:07" or "37.0" depending on your format.
 class ChatPage extends StatefulWidget {
-  const ChatPage({Key? key}) : super(key: key);
+  const ChatPage({super.key});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -37,6 +41,7 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _chatController = TextEditingController();
 
   // Video loading
+  // ignore: unused_field
   String? _videoUrl;
   bool _isLoading = false;
   bool _videoReady = false;
@@ -67,7 +72,7 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     // If you want to load some local transcript or dummy chat at startup:
-    // _loadLocalTranscriptJson(); 
+    // _loadLocalTranscriptJson();
     // _loadSampleChatFromJson();
   }
 
@@ -85,15 +90,13 @@ class _ChatPageState extends State<ChatPage> {
   // (A) Upload the Video Link to the Backend
   // ------------------------------------------------------------------------
   Future<void> _uploadVideoToServer(String url) async {
-    // Suppose we only do this if it's a YouTube link (the backend expects "youtube_url").
-    // If you also want to handle local files on the server, adapt accordingly.
     final apiUrl = 'http://127.0.0.1:5000/upload';
 
     try {
       final response = await http.post(
         Uri.parse(apiUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'youtube_url': url}), // or local path if your backend supports it
+        body: jsonEncode({'youtube_url': url}),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -102,7 +105,6 @@ class _ChatPageState extends State<ChatPage> {
         setState(() {
           _sessionId = session;
         });
-        // Optionally show a confirmation
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$msg (session: $session)')),
         );
@@ -147,7 +149,6 @@ class _ChatPageState extends State<ChatPage> {
         // Convert conversation to chat lines
         final newChatList = <String>[];
         for (var item in conversation) {
-          // item is like {"USER": "..."} or {"AI": "..."}
           if (item is Map) {
             if (item.containsKey('USER')) {
               newChatList.add('User: ${item['USER']}');
@@ -158,7 +159,6 @@ class _ChatPageState extends State<ChatPage> {
         }
 
         // Convert relevant_time_stamps to a new transcript
-        // e.g. "timestamp": 127.86 -> "2:07"
         final newTranscript = <TranscriptItem>[];
         for (var stamp in relevantStamps) {
           if (stamp is Map) {
@@ -170,8 +170,8 @@ class _ChatPageState extends State<ChatPage> {
             } else if (rawTs is double) {
               sec = rawTs;
             }
-            // Convert to mm:ss
-            final tsString = _formatTimestamp(sec); 
+            // Convert e.g. 127.86 -> "2:07"
+            final tsString = _formatTimestamp(sec);
             newTranscript.add(TranscriptItem(time: tsString, content: sentence));
           }
         }
@@ -234,7 +234,6 @@ class _ChatPageState extends State<ChatPage> {
     _youtubeController = null;
 
     try {
-      // If it's YouTube, call the upload API to get session_id, then load
       if (_isYouTube) {
         // 1) Upload to the server for transcript
         await _uploadVideoToServer(link);
@@ -251,7 +250,6 @@ class _ChatPageState extends State<ChatPage> {
           _isLoading = false;
         });
       } else {
-        // If it's not YouTube: local or network
         if (kIsWeb) {
           if (link.startsWith('blob:') || link.startsWith('file:')) {
             // Web local fallback
@@ -269,7 +267,6 @@ class _ChatPageState extends State<ChatPage> {
         } else {
           // Mobile/desktop
           if (_isLocalFile(link)) {
-            // Possibly upload to server if needed. Right now we skip it.
             final filePath = link.startsWith('file://') ? link.substring(7) : link;
             await _setupChewieFile(filePath);
           } else if (link.startsWith('http')) {
@@ -366,16 +363,13 @@ class _ChatPageState extends State<ChatPage> {
   // (D) Seek Video from Transcript
   // ------------------------------------------------------------------------
   void _seekVideoToTime(String time) {
-    // time is something like "2:07" or "01:15:23"
-    // parse that into total seconds
-    final parts = time.split(':').reversed.toList(); // ["07", "2"] or ["23","15","01"]
+    final parts = time.split(':').reversed.toList(); // ["07","2"] or ["23","15","01"]
     int totalSeconds = 0;
     for (int i = 0; i < parts.length; i++) {
       final val = int.tryParse(parts[i]) ?? 0;
       totalSeconds += val * (60 ^ i); // 60^0=1, 60^1=60, 60^2=3600
     }
 
-    // YouTube or local
     if (_isYouTube && _youtubeController != null) {
       _youtubeController?.seekTo(seconds: totalSeconds.toDouble());
       _youtubeController?.playVideo();
@@ -416,81 +410,127 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ------------------------------------------------------------------------
-  // (F) Download Non-YouTube
+  // (F) Download Notes (PDF)
   // ------------------------------------------------------------------------
-  Future<void> _downloadVideo() async {
-    if (_videoUrl == null) return;
-    if (_isYouTube) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Downloading YouTube videos is restricted.")),
+  Future<void> _downloadNotes() async {
+  if (_sessionId == null || _sessionId!.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Session not established. Please load a session first.')),
+    );
+    return;
+  }
+
+  const apiUrl = 'http://127.0.0.1:5000/notes';
+
+  try {
+    final response = await http.post(
+      Uri.parse(apiUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'session_id': _sessionId}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final String notes = data['notes'] ?? '';
+
+      // 1) Build PDF
+      final pdf = pw.Document();
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              pw.Text(
+                'Lecture Notes',
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text(
+                notes,
+                style: const pw.TextStyle(fontSize: 12),
+              ),
+            ];
+          },
+        ),
       );
-      return;
-    }
-    if (kIsWeb) {
-      try {
-        final response = await http.get(Uri.parse(_videoUrl!));
-        if (response.statusCode == 200) {
-          final bytes = response.bodyBytes;
-          final blob = html.Blob([bytes]);
-          final url = html.Url.createObjectUrlFromBlob(blob);
-          final anchor = html.AnchorElement(href: url)
-            ..setAttribute("download", 'video.mp4')
-            ..style.display = 'none';
-          html.document.body!.append(anchor);
-          anchor.click();
-          anchor.remove();
-          html.Url.revokeObjectUrl(url);
+
+      // 2) Save PDF to bytes
+      final pdfBytes = await pdf.save();
+
+      // 3) Download approach: Web vs. Mobile/Desktop
+      if (kIsWeb) {
+        // Web: Use HTML anchor to trigger download
+        final blob = html.Blob([pdfBytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', 'notes.pdf')
+          ..style.display = 'none';
+        html.document.body!.append(anchor);
+        anchor.click();
+        anchor.remove(); // <-- FIXED: Use remove() instead of removeChild()
+        html.Url.revokeObjectUrl(url);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notes download initiated')),
+        );
+      } else {
+        // Mobile/Desktop
+        final status = await Permission.storage.request();
+        if (status.isGranted) {
+          Directory? directory;
+          if (Platform.isAndroid) {
+            directory = await getExternalStorageDirectory();
+          } else if (Platform.isIOS) {
+            directory = await getApplicationDocumentsDirectory();
+          } else {
+            directory = await getApplicationDocumentsDirectory();
+          }
+
+          if (directory == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Unable to access storage')),
+            );
+            return;
+          }
+
+          final filePath = '${directory.path}/notes.pdf';
+          final file = File(filePath);
+          await file.writeAsBytes(pdfBytes);
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Video download initiated')),
+              const SnackBar(content: Text('Notes PDF saved')),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Storage permission denied')),
             );
           }
         }
-      } catch (e) {
-        if (kDebugMode) print('Error downloading video on web: $e');
       }
     } else {
-      final status = await Permission.storage.request();
-      if (status.isGranted) {
-        try {
-          final response = await http.get(Uri.parse(_videoUrl!));
-          if (response.statusCode == 200) {
-            final bytes = response.bodyBytes;
-            Directory? directory;
-            if (Platform.isAndroid) {
-              directory = await getExternalStorageDirectory();
-            } else if (Platform.isIOS) {
-              directory = await getApplicationDocumentsDirectory();
-            } else {
-              directory = await getApplicationDocumentsDirectory();
-            }
-            if (directory == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Unable to access storage')),
-              );
-              return;
-            }
-            final filePath = '${directory.path}/video.mp4';
-            final file = File(filePath);
-            await file.writeAsBytes(bytes);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Video downloaded')),
-              );
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) print('Error downloading video: $e');
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Permission denied')),
-          );
-        }
+      if (kDebugMode) {
+        print('Error downloading notes: ${response.body}');
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${response.statusCode}')),
+      );
     }
+  } catch (e) {
+    if (kDebugMode) {
+      print('Exception in _downloadNotes: $e');
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Failed to download notes')),
+    );
   }
+}
+
 
   // ------------------------------------------------------------------------
   // (G) Build UI
@@ -565,9 +605,7 @@ class _ChatPageState extends State<ChatPage> {
                                     return AspectRatio(
                                       aspectRatio:
                                           _videoController!.value.aspectRatio,
-                                      child: Chewie(
-                                        controller: _chewieController!,
-                                      ),
+                                      child: Chewie(controller: _chewieController!),
                                     );
                                   }
                                   // If we reach here, no player
@@ -575,10 +613,11 @@ class _ChatPageState extends State<ChatPage> {
                                 }),
                               ),
                               const SizedBox(height: 8),
+                              // Replaced the old "Download Video" button with "Download Notes"
                               if (!_isYouTube)
                                 ElevatedButton(
-                                  onPressed: _downloadVideo,
-                                  child: const Text('Download Video'),
+                                  onPressed: _downloadNotes,
+                                  child: const Text('Download Notes'),
                                 ),
                             ],
                           ],
@@ -711,7 +750,8 @@ class _ChatPageState extends State<ChatPage> {
 /// By default, video_player doesn't handle `file://` or `blob:` URLs.
 class _LocalWebVideoPlayer extends StatefulWidget {
   final String videoUrl;
-  const _LocalWebVideoPlayer({Key? key, required this.videoUrl}) : super(key: key);
+  // ignore: unused_element
+  const _LocalWebVideoPlayer({super.key, required this.videoUrl});
 
   @override
   State<_LocalWebVideoPlayer> createState() => _LocalWebVideoPlayerState();
