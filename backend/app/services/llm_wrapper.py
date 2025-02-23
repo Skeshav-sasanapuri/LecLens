@@ -3,8 +3,9 @@ import torch
 import os
 import google.generativeai as genai
 import re
+import os
 
-home_dir = "C:\\Users\\tejak\\OneDrive\\Documents\\RIT\\projects\\brickhack_2025"
+home_dir = os.path.abspath(os.path.join(os.getcwd()))
 model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
 model_dir = f"{home_dir}\\models"
 transcript_dir = f"{home_dir}\\transcripts"
