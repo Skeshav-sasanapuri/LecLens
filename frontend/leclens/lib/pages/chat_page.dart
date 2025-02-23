@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart'; // <--- Add this
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for rootBundle
@@ -53,13 +54,13 @@ class _ChatPageState extends State<ChatPage> {
 
   // This flag ensures the dummy chat is shown until user sends a new query.
   // After the first user query, we clear the dummy chat.
-  bool _dummyChatActive = true;  // <--- WHEN TRUE, SHOW DUMMY CHAT
+  bool _dummyChatActive = true; // <--- WHEN TRUE, SHOW DUMMY CHAT
 
   @override
   void initState() {
     super.initState();
-    _loadLocalTranscriptJson();  // loads transcript from 'assets/transcripts/text_to_timestamp.json'
-    _loadSampleChatFromJson();   // loads the dummy chat from 'assets/chat/sample_chat.json'
+    _loadLocalTranscriptJson(); // loads transcript from assets/transcripts/text_to_timestamp.json
+    _loadSampleChatFromJson();  // loads the dummy chat from assets/chat/sample_chat.json
   }
 
   @override
@@ -74,11 +75,10 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ------------------------------------------------------------------------
-  // (A) Load Sample Chat (DUMMY) - Remove once the real API is functional
+  // (A) Load Sample Chat (DUMMY) - Remove once real API is functional
   // ------------------------------------------------------------------------
   Future<void> _loadSampleChatFromJson() async {
     if (!_dummyChatActive) return; // if somehow turned off, skip loading
-
     try {
       final String chatJson =
           await rootBundle.loadString('assets/chat/sample_chat.json');
@@ -112,6 +112,7 @@ class _ChatPageState extends State<ChatPage> {
       final String dataString =
           await rootBundle.loadString('assets/transcripts/text_to_timestamp.json');
       final Map<String, dynamic> data = jsonDecode(dataString);
+
       setState(() {
         _textToTimestampMap = data.map((k, v) => MapEntry(k, v.toString()));
       });
@@ -132,13 +133,14 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ------------------------------------------------------------------------
-  // (C) Loading the Video
+  // (C) Load the Video
   // ------------------------------------------------------------------------
+  /// Called when user either pastes a link or picks a file.
   Future<void> _loadVideoFromLink() async {
     final link = _videoLinkController.text.trim();
     if (link.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid video link.')),
+        const SnackBar(content: Text('Please enter a valid video link or path.')),
       );
       return;
     }
@@ -172,6 +174,7 @@ class _ChatPageState extends State<ChatPage> {
       } else {
         VideoPlayerController tmpController;
         if (_isLocalFile(link)) {
+          // e.g. file://... or absolute
           final filePath = link.startsWith('file://') ? link.substring(7) : link;
           tmpController = VideoPlayerController.file(File(filePath));
         } else {
@@ -195,7 +198,9 @@ class _ChatPageState extends State<ChatPage> {
         });
       }
     } catch (e) {
-      if (kDebugMode) print('Error loading video: $e');
+      if (kDebugMode) {
+        print('Error loading video: $e');
+      }
       setState(() {
         _isLoading = false;
         _videoReady = false;
@@ -203,6 +208,34 @@ class _ChatPageState extends State<ChatPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to load video.')),
       );
+    }
+  }
+
+  /// Opens a file picker so the user can select a local video file.
+  /// Then automatically loads it.
+  Future<void> _pickLocalVideo() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.video,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final path = result.files.single.path;
+        if (path != null) {
+          // Convert to file:// schema for consistency
+          final fileUri = 'file://$path';
+          // Put it in the text field
+          setState(() {
+            _videoLinkController.text = fileUri;
+          });
+          // Then load
+          await _loadVideoFromLink();
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error picking file: $e");
+      }
     }
   }
 
@@ -215,6 +248,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   bool _isLocalFile(String link) {
+    // e.g. 'file://' or absolute path
     return link.startsWith("file://") || File(link).isAbsolute;
   }
 
@@ -269,7 +303,7 @@ class _ChatPageState extends State<ChatPage> {
     final userMessage = _chatController.text.trim();
     if (userMessage.isEmpty) return;
 
-    // If dummy chat is active, remove it now (once the user sends a message)
+    // If dummy chat is active, remove it now (once the user sends a message).
     // AFTER API is functional, we can remove this logic.
     if (_dummyChatActive) {
       setState(() {
@@ -284,18 +318,23 @@ class _ChatPageState extends State<ChatPage> {
       _chatController.clear();
     });
 
-    // For now, let's do a dummy refresh. In real usage, call your API.
+    // In real usage, you'd call your API here, sending:
+    //  - session_id
+    //  - user_message
+    //  - filepath = _videoUrl
+    // For demonstration, we do a dummy response:
     await Future.delayed(const Duration(seconds: 1));
-    // Pretend we got a fresh JSON with session_id and conversation
     final updatedSessionId = _sessionId ?? "test_session_123";
+
     final updatedConversation = [
-      ..._chatMessages, // existing lines
-      "AI: This is an updated response from the server (dummy)."
+      ..._chatMessages,
+      // Show that we're including the file path in the conversation for debugging
+      "AI: The server acknowledges your file path: ${_videoUrl ?? 'no file path'}",
+      "AI: This is a dummy response from the server."
     ];
 
     setState(() {
       _sessionId = updatedSessionId;
-      // Overwrite the chatMessages with updated conversation
       _chatMessages = updatedConversation;
     });
   }
@@ -400,21 +439,26 @@ class _ChatPageState extends State<ChatPage> {
                         padding: const EdgeInsets.all(8.0),
                         child: Column(
                           children: [
-                            // Enter link + Load
+                            // Enter link + Load + Upload
                             Row(
                               children: [
                                 Expanded(
                                   child: TextField(
                                     controller: _videoLinkController,
                                     decoration: const InputDecoration(
-                                      hintText: "Enter a YouTube link or file path",
+                                      hintText: "Enter a YouTube or local file path",
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 ElevatedButton(
                                   onPressed: _loadVideoFromLink,
-                                  child: const Text("Load Video"),
+                                  child: const Text("Load YouTube Video"),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: _pickLocalVideo,
+                                  child: const Text("Upload Video File"),
                                 ),
                               ],
                             ),
@@ -434,7 +478,8 @@ class _ChatPageState extends State<ChatPage> {
                                       )
                                     : _chewieController != null
                                         ? AspectRatio(
-                                            aspectRatio: _videoController!.value.aspectRatio,
+                                            aspectRatio:
+                                                _videoController!.value.aspectRatio,
                                             child: Chewie(
                                               controller: _chewieController!,
                                             ),
