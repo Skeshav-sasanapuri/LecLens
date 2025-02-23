@@ -1,0 +1,13 @@
+I have a transcript of a video, and I need detailed notes based on this transcript. The notes should be comprehensive and structured, covering key concepts, important details, and any relevant examples. The notes should be well-organized and easy to follow, ensuring that they provide a clear summary of the main points covered in the video.
+
+Please structure the notes with clear headings, bullet points where necessary, and concise paragraphs for each topic. The goal is to provide the user with a thorough understanding of the video content.
+
+**Transcript:**
+[Insert the lecture transcript here.]
+
+**Instructions:**
+1. Extract the most important information from the transcript.
+2. Organize the notes with clear headings for each major topic or section.
+3. Include key details, definitions, and examples where relevant.
+4. Ensure the notes are detailed but concise enough to fit into a document that will be converted into a PDF.
+5. Present the notes in a clear and readable format, suitable for downloading as a PDF.
