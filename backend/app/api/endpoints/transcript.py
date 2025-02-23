@@ -7,7 +7,7 @@ router = APIRouter()
 
 class TranscriptRequest(BaseModel):
     youtube_url: str = None
-    video_file_path: str = None  # For local video files
+    video_file: str = None  # For local video files
 
 @router.post("/transcript")
 def fetch_transcript(request: TranscriptRequest):
@@ -18,8 +18,8 @@ def fetch_transcript(request: TranscriptRequest):
     try:
         if request.youtube_url:
             transcript = youtube_transcript.get_transcript(request.youtube_url)
-        elif request.video_file_path:
-            transcript = transcript_extraction.get_transcript_from_file(request.video_file_path)
+        elif request.video_file:
+            transcript = transcript_extraction.get_transcript_from_file(request.video_file)
         else:
             raise ValueError("Either 'youtube_url' or 'video_file_path' must be provided.")
         return {"transcript": transcript}
