@@ -18,14 +18,11 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 // --- PDF & printing imports ---
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-// ignore: unused_import
-import 'package:printing/printing.dart';
+// import 'package:printing/printing.dart';
 
 import '../components/common_background.dart';
 import '../transcripts/transcript_item.dart';
 
-/// A transcript item includes [time] for display and [content].
-/// Time is something like "02:07" or "37.0" depending on your format.
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
 
@@ -65,13 +62,13 @@ class _ChatPageState extends State<ChatPage> {
   // Dummy chat logic (remove once real API fully integrated)
   bool _dummyChatActive = true;
 
-  // If on web and we pick a local file, store blob/data URL for fallback
+  // Web local video fallback
   String? _webLocalVideoUrl;
 
   @override
   void initState() {
     super.initState();
-    // If you want to load some local transcript or dummy chat at startup:
+    // Optionally load something on init
     // _loadLocalTranscriptJson();
     // _loadSampleChatFromJson();
   }
@@ -158,7 +155,7 @@ class _ChatPageState extends State<ChatPage> {
           }
         }
 
-        // Convert relevant_time_stamps to a new transcript
+        // Convert relevant_time_stamps to transcript
         final newTranscript = <TranscriptItem>[];
         for (var stamp in relevantStamps) {
           if (stamp is Map) {
@@ -170,7 +167,6 @@ class _ChatPageState extends State<ChatPage> {
             } else if (rawTs is double) {
               sec = rawTs;
             }
-            // Convert e.g. 127.86 -> "2:07"
             final tsString = _formatTimestamp(sec);
             newTranscript.add(TranscriptItem(time: tsString, content: sentence));
           }
@@ -250,6 +246,7 @@ class _ChatPageState extends State<ChatPage> {
           _isLoading = false;
         });
       } else {
+        // Non-YouTube
         if (kIsWeb) {
           if (link.startsWith('blob:') || link.startsWith('file:')) {
             // Web local fallback
@@ -363,7 +360,8 @@ class _ChatPageState extends State<ChatPage> {
   // (D) Seek Video from Transcript
   // ------------------------------------------------------------------------
   void _seekVideoToTime(String time) {
-    final parts = time.split(':').reversed.toList(); // ["07","2"] or ["23","15","01"]
+    // time is like "2:07" or "01:15:23"
+    final parts = time.split(':').reversed.toList();
     int totalSeconds = 0;
     for (int i = 0; i < parts.length; i++) {
       final val = int.tryParse(parts[i]) ?? 0;
@@ -413,124 +411,126 @@ class _ChatPageState extends State<ChatPage> {
   // (F) Download Notes (PDF)
   // ------------------------------------------------------------------------
   Future<void> _downloadNotes() async {
-  if (_sessionId == null || _sessionId!.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Session not established. Please load a session first.')),
-    );
-    return;
-  }
+    if (_sessionId == null || _sessionId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session not established. Please load a session first.')),
+      );
+      return;
+    }
 
-  const apiUrl = 'http://127.0.0.1:5000/notes';
+    const apiUrl = 'http://127.0.0.1:5000/notes';
 
-  try {
-    final response = await http.post(
-      Uri.parse(apiUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'session_id': _sessionId}),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final String notes = data['notes'] ?? '';
-
-      // 1) Build PDF
-      final pdf = pw.Document();
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return [
-              pw.Text(
-                'Lecture Notes',
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 10),
-              pw.Text(
-                notes,
-                style: const pw.TextStyle(fontSize: 12),
-              ),
-            ];
-          },
-        ),
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'session_id': _sessionId}),
       );
 
-      // 2) Save PDF to bytes
-      final pdfBytes = await pdf.save();
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final String notes = data['notes'] ?? '';
 
-      // 3) Download approach: Web vs. Mobile/Desktop
-      if (kIsWeb) {
-        // Web: Use HTML anchor to trigger download
-        final blob = html.Blob([pdfBytes], 'application/pdf');
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', 'notes.pdf')
-          ..style.display = 'none';
-        html.document.body!.append(anchor);
-        anchor.click();
-        anchor.remove(); // <-- FIXED: Use remove() instead of removeChild()
-        html.Url.revokeObjectUrl(url);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notes download initiated')),
+        // 1) Build PDF
+        final pdf = pw.Document();
+        pdf.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4,
+            build: (pw.Context context) {
+              return [
+                pw.Text(
+                  'Lecture Notes',
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 10),
+                pw.Text(
+                  notes,
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+              ];
+            },
+          ),
         );
-      } else {
-        // Mobile/Desktop
-        final status = await Permission.storage.request();
-        if (status.isGranted) {
-          Directory? directory;
-          if (Platform.isAndroid) {
-            directory = await getExternalStorageDirectory();
-          } else if (Platform.isIOS) {
-            directory = await getApplicationDocumentsDirectory();
-          } else {
-            directory = await getApplicationDocumentsDirectory();
-          }
 
-          if (directory == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Unable to access storage')),
-            );
-            return;
-          }
+        // 2) Save PDF to bytes
+        final pdfBytes = await pdf.save();
 
-          final filePath = '${directory.path}/notes.pdf';
-          final file = File(filePath);
-          await file.writeAsBytes(pdfBytes);
+        // 3) Download approach: web vs other
+        if (kIsWeb) {
+          // Use HTML anchor to download on web
+          final blob = html.Blob([pdfBytes], 'application/pdf');
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute('download', 'notes.pdf')
+            ..style.display = 'none';
+          html.document.body!.append(anchor);
 
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Notes PDF saved')),
-            );
-          }
+          // Click & remove
+          anchor.click();
+          anchor.remove(); // instead of removeChild
+
+          html.Url.revokeObjectUrl(url);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Notes download initiated')),
+          );
         } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Storage permission denied')),
-            );
+          // Mobile/Desktop
+          final status = await Permission.storage.request();
+          if (status.isGranted) {
+            Directory? directory;
+            if (Platform.isAndroid) {
+              directory = await getExternalStorageDirectory();
+            } else if (Platform.isIOS) {
+              directory = await getApplicationDocumentsDirectory();
+            } else {
+              directory = await getApplicationDocumentsDirectory();
+            }
+
+            if (directory == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Unable to access storage')),
+              );
+              return;
+            }
+
+            final filePath = '${directory.path}/notes.pdf';
+            final file = File(filePath);
+            await file.writeAsBytes(pdfBytes);
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notes PDF saved')),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Storage permission denied')),
+              );
+            }
           }
         }
+      } else {
+        if (kDebugMode) {
+          print('Error downloading notes: ${response.body}');
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${response.statusCode}')),
+        );
       }
-    } else {
+    } catch (e) {
       if (kDebugMode) {
-        print('Error downloading notes: ${response.body}');
+        print('Exception in _downloadNotes: $e');
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${response.statusCode}')),
+        const SnackBar(content: Text('Failed to download notes')),
       );
     }
-  } catch (e) {
-    if (kDebugMode) {
-      print('Exception in _downloadNotes: $e');
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Failed to download notes')),
-    );
   }
-}
-
 
   // ------------------------------------------------------------------------
   // (G) Build UI
@@ -587,25 +587,26 @@ class _ChatPageState extends State<ChatPage> {
                             if (_videoReady) ...[
                               Expanded(
                                 child: Builder(builder: (context) {
-                                  // 1) If it's YouTube, show YT iframe player
+                                  // If it's YouTube
                                   if (_isYouTube && _youtubeController != null) {
                                     return YoutubePlayer(
                                       controller: _youtubeController!,
                                       aspectRatio: 16 / 9,
                                     );
                                   }
-                                  // 2) If web local fallback
+                                  // Web local fallback
                                   if (kIsWeb && _webLocalVideoUrl != null) {
                                     return _LocalWebVideoPlayer(
                                       videoUrl: _webLocalVideoUrl!,
                                     );
                                   }
-                                  // 3) Otherwise, Chewie for local or HTTP video
+                                  // Otherwise, Chewie for local or network video
                                   if (_chewieController != null) {
                                     return AspectRatio(
-                                      aspectRatio:
-                                          _videoController!.value.aspectRatio,
-                                      child: Chewie(controller: _chewieController!),
+                                      aspectRatio: _videoController!.value.aspectRatio,
+                                      child: Chewie(
+                                        controller: _chewieController!,
+                                      ),
                                     );
                                   }
                                   // If we reach here, no player
@@ -613,12 +614,11 @@ class _ChatPageState extends State<ChatPage> {
                                 }),
                               ),
                               const SizedBox(height: 8),
-                              // Replaced the old "Download Video" button with "Download Notes"
-                              if (!_isYouTube)
-                                ElevatedButton(
-                                  onPressed: _downloadNotes,
-                                  child: const Text('Download Notes'),
-                                ),
+                              // Always show "Download Notes" if we have a loaded video
+                              ElevatedButton(
+                                onPressed: _downloadNotes,
+                                child: const Text('Download Notes'),
+                              ),
                             ],
                           ],
                         ),
@@ -772,7 +772,7 @@ class _LocalWebVideoPlayerState extends State<_LocalWebVideoPlayer> {
       final video = html.VideoElement()
         ..src = url
         ..controls = true
-        ..autoplay = true  // Browsers often require muted to auto-play
+        ..autoplay = true // Browsers often require muted to auto-play
         ..muted = true
         ..style.width = '100%'
         ..style.height = '100%'

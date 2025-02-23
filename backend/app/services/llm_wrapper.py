@@ -5,7 +5,7 @@ import google.generativeai as genai
 import re
 import os
 
-home_dir = "C:\Users\tejak\OneDrive\Documents\RIT\projects\brickhack_2025"
+home_dir = "/Users/surbhitkumar/Desktop/personal-proj/brickhack/brickhack_2025"
 model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
 model_dir = f"{home_dir}\\models"
 transcript_dir = f"{home_dir}\\transcripts"
@@ -126,19 +126,19 @@ def get_prompt(file: str, transcript: str, user_parameter: str) -> str:
     return prompt
 
 
-def main():
-    question = " What is the role of charge interactions in the phenomenon of light refraction?"
-    transcript = read_transcript("fcfQkxwz4Oo_transcript.txt")
-    # answer = get_context_for_question(question, transcript)
-    # print(answer)
-    # answer = answer_user_query(transcript, question)
-    # answer = generate_notes(transcript)
-    answer = generate_quiz(transcript, "Easy")
-    # print(answer)
+# def main():
+#     question = " What is the role of charge interactions in the phenomenon of light refraction?"
+#    # transcript = read_transcript("fcfQkxwz4Oo_transcript.txt")
+#     # answer = get_context_for_question(question, transcript)
+#     # print(answer)
+#     # answer = answer_user_query(transcript, question)
+#     # answer = generate_notes(transcript)
+#     answer = generate_quiz(transcript, "Easy")
+#     # print(answer)
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 
 
