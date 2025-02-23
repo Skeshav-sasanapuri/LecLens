@@ -1,0 +1,39 @@
+I have received multiple-choice questions (MCQs) with four options and the correct answer. Please convert the following data into the format shown below for each question.
+
+For each question:
+
+Extract the question text.
+Extract the four options.
+Extract the correct answer and assign it to the "answer" field.
+
+Output the result in the following format:
+
+question_data = {
+    "question": "The question text",
+    "options": ["option1", "option2", "option3", "option4"],
+    "answer": "correct_answer"
+}
+
+Here is the MCQ data you need to process (with each question having the four options and the correct answer):
+
+Input Data:
+
+[Insert the lecture transcript here.]
+
+Output (in the required format):
+
+question_data = [
+    {
+        "question": "What is the capital of France?",
+        "options": ["Paris", "London", "Berlin", "Madrid"],
+        "answer": "Paris"
+    },
+    {
+        "question": "Which of these is a programming language?",
+        "options": ["English", "Python", "Table", "Mountain"],
+        "answer": "Python"
+    }
+    # Repeat this structure for the rest of the questions.
+]
+
+

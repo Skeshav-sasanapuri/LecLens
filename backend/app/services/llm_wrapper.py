@@ -3,8 +3,10 @@ import torch
 import os
 import google.generativeai as genai
 import re
+import os
 
-home_dir = "C:\\Users\\kesha\\PycharmProjects\\hackathon\\brickhack_2025"
+
+home_dir = os.path.abspath(os.path.join(os.getcwd()))
 model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
 model_dir = f"{home_dir}\\models"
 transcript_dir = f"{home_dir}\\transcripts"
@@ -61,8 +63,7 @@ def generate_notes(transcript: str) -> str:
     response = extract_text(response)
     return response
 
-
-def generate_quiz(transcript: str, difficulty_level: str) -> list:
+def generate_quiz(transcript:str, difficulty_level:str) -> list:
     print("Generating quiz")
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-pro")
@@ -78,11 +79,10 @@ def generate_quiz(transcript: str, difficulty_level: str) -> list:
 
     return questions
 
-
-def create_quizzes(response: str, answer_choices: list) -> None:
+def create_quizzes(response:str,answer_choices: list) -> None:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-pro")
-    prompt = get_prompt(f"{home_dir}//data//prompts//format_quiz.txt", response, "")
+    prompt = get_prompt(f"{home_dir}//data//prompts//format_quiz.txt",response,"")
     response = model.generate_content(prompt)
     response = extract_text(response)
     return response
@@ -100,7 +100,6 @@ def create_quizzes(response: str, answer_choices: list) -> None:
     #         "options": options,
     #         "answer": correct_answer
     #     }
-
     #     questions.append(question_data)
     # return questions
 
