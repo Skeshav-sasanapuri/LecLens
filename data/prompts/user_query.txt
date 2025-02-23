@@ -1,0 +1,12 @@
+I have a transcript of a lecture and a question related to it. Please provide a concise answer to the question based on the transcript. If the answer requires more context or explanation to be clear, provide a short elaboration (within 50-100 words). Avoid overly long responses.
+
+**Transcript:**
+[Insert the lecture transcript here.]
+
+**Question:**
+[Insert the user submitted parameter here]
+
+**Instructions:**
+1. Answer the question directly and concisely based on the transcript.
+2. If necessary, provide additional context or elaboration to ensure clarity, but limit the response to 50-100 words.
+3. Ensure the answer is easy to understand and relevant to the transcript content.

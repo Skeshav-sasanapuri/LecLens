@@ -1,0 +1,27 @@
+I have a transcript of a video or lecture, and I need to generate a quiz based on the content. The quiz should contain 10 multiple-choice questions (MCQs) with 4 options for each question, where only one option is correct. The questions should be relevant to the key concepts, definitions, and examples mentioned in the transcript. The user will specify the difficulty level of the quiz: easy, medium, or hard. The difficulty level should influence how challenging the questions are.
+
+**Instructions:**
+1. Generate 10 MCQs based on the content of the transcript.
+2. For each question, provide 4 options (labeled A, B, C, and D), with only one correct option.
+3. The difficulty level provided by the user should determine the complexity of the questions:
+   - **Easy:** The questions should be straightforward, testing basic facts or key definitions from the transcript.
+   - **Medium:** The questions should require some reasoning or understanding of the concepts from the transcript.
+   - **Hard:** The questions should challenge the user’s deeper understanding of the material, including details, implications, or application of the concepts discussed.
+4. The correct answer should be clearly identifiable.
+5. The questions should test the understanding of the main topics, concepts, and details discussed in the video or lecture.
+
+**Difficulty Level:** [Insert the user submitted parameter here]
+
+**Transcript:**
+[Insert the lecture transcript here.]
+
+**Example Question Format:**
+1. What is the primary function of Artificial Intelligence (AI)?
+    A. To simulate human intelligence in machines  
+    B. To replace humans in every task  
+    C. To design robots  
+    D. To automate traditional manufacturing  
+    Correct answer: A
+
+Strictly follow the Example Question Format.
+
