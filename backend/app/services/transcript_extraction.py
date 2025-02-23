@@ -46,10 +46,14 @@ def get_audio_data(file_path):
     audio = open(file_path,'rb')
     return audio
 
+def get_api_key():
+    return os.getenv("API_KEY")
+
 if __name__ == "__main__":
     fpath = input("Enter audio file path:")
+    #fpath = "/data/audio/test_audio.mp3"
     audio = get_audio_data(fpath)
-    key = os.getenv("API_KEY")
+    key = get_api_key()
     transcripts  = audio_to_transcript(key,audio)
-    transcript, stamp_map = format_transcript(transcripts=transcripts)
+    stamp_map, transcript  = format_transcript(transcripts=transcripts)
     print(stamp_map)

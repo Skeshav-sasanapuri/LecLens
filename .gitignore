@@ -169,3 +169,4 @@
 
 # # PyPI configuration file
 # .pypirc
+/backend/app/services/.env
