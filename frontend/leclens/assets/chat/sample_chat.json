@@ -1,0 +1,13 @@
+{
+    "session_id": "test_session_123",
+    "conversation": [
+      "AI: Hello! How can I assist you today?",
+      "User: Can you explain the Pythagorean theorem?",
+      "AI: Sure! The Pythagorean theorem states that in a right triangle, the square of the hypotenuse is equal to the sum of the squares of the other two sides.",
+      "User: That's interesting! Can you give an example?",
+      "AI: Of course! If one leg is 3 units and the other is 4 units, the hypotenuse will be 5 units because 3² + 4² = 5².",
+      "User: Thanks! That makes sense.",
+      "AI: You're welcome! Let me know if you have more questions."
+    ]
+  }
+  
