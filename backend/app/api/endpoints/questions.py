@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
-from ...services import llm_wrapper
-from ...services import relevant_time_stamps
-from ..cache import Cache
+from backend.app.services import llm_wrapper
+from backend.app.services import relevant_time_stamps
+from backend.app.api.cache import Cache
 
 question_bp = Blueprint('question', __name__)
 

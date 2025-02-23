@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from ...services import llm_wrapper
-from ..cache import Cache
+from backend.app.services import llm_wrapper
+from backend.app.api.cache import Cache
 
 notes_bp = Blueprint('notes', __name__)
 
