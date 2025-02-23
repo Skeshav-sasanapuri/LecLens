@@ -10,3 +10,4 @@ regex==2024.5.15
 openai==1.64.0
 python-dotenv
 flask
+sentence-transformers
