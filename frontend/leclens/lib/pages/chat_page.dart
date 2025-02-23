@@ -2,14 +2,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Directory, Platform;
-// ignore: unused_import
-import 'dart:typed_data';
+// import 'dart:math';
 import 'dart:ui_web' as ui;
+
 import 'package:chewie/chewie.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // for rootBundle
+// import 'package:flutter/services.dart'; // for rootBundle
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -20,6 +20,8 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../components/common_background.dart';
 import '../transcripts/transcript_item.dart';
 
+/// A transcript item includes [time] for display and [content].
+/// Time is something like "02:07" or "37.0" depending on your format.
 class ChatPage extends StatefulWidget {
   const ChatPage({Key? key}) : super(key: key);
 
@@ -34,12 +36,13 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _videoLinkController = TextEditingController();
   final TextEditingController _chatController = TextEditingController();
 
+  // Video loading
   String? _videoUrl;
   bool _isLoading = false;
   bool _videoReady = false;
   bool _isYouTube = false;
 
-  // For local/network videos (mobile/desktop)
+  // For local/network videos on mobile/desktop
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   Future<void>? _initializeVideoFuture;
@@ -47,26 +50,25 @@ class _ChatPageState extends State<ChatPage> {
   // For YouTube
   YoutubePlayerController? _youtubeController;
 
-  // Transcript
+  // Transcript at bottom
   List<TranscriptItem> _transcript = [];
-  Map<String, String> _textToTimestampMap = {};
 
-  // Chat
+  // Chat and session
   String? _sessionId;
   List<String> _chatMessages = [];
 
-  // This flag ensures the dummy chat is shown until user sends a new query.
-  // After the first user query, we clear the dummy chat.
-  bool _dummyChatActive = true; // <--- WHEN TRUE, SHOW DUMMY CHAT
+  // Dummy chat logic (remove once real API fully integrated)
+  bool _dummyChatActive = true;
 
-  // If on web, and we pick a local file, we might store the blob or data URL here:
+  // If on web and we pick a local file, store blob/data URL for fallback
   String? _webLocalVideoUrl;
 
   @override
   void initState() {
     super.initState();
-    _loadLocalTranscriptJson(); // loads transcript from assets/transcripts/text_to_timestamp.json
-    _loadSampleChatFromJson();  // loads the dummy chat from assets/chat/sample_chat.json
+    // If you want to load some local transcript or dummy chat at startup:
+    // _loadLocalTranscriptJson(); 
+    // _loadSampleChatFromJson();
   }
 
   @override
@@ -74,72 +76,138 @@ class _ChatPageState extends State<ChatPage> {
     _videoController?.dispose();
     _chewieController?.dispose();
     _youtubeController?.close();
-
     _videoLinkController.dispose();
     _chatController.dispose();
     super.dispose();
   }
 
   // ------------------------------------------------------------------------
-  // (A) Load Sample Chat (DUMMY) - Remove once real API is functional
+  // (A) Upload the Video Link to the Backend
   // ------------------------------------------------------------------------
-  Future<void> _loadSampleChatFromJson() async {
-    if (!_dummyChatActive) return;
-    try {
-      final String chatJson =
-          await rootBundle.loadString('assets/chat/sample_chat.json');
-      final Map<String, dynamic> data = jsonDecode(chatJson);
+  Future<void> _uploadVideoToServer(String url) async {
+    // Suppose we only do this if it's a YouTube link (the backend expects "youtube_url").
+    // If you also want to handle local files on the server, adapt accordingly.
+    final apiUrl = 'http://127.0.0.1:5000/upload';
 
-      setState(() {
-        _sessionId = data["session_id"] ?? "test_session_123";
-        final List<dynamic> conv = data["conversation"] ?? [];
-        _chatMessages = conv.map((e) => e.toString()).toList();
-      });
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error loading sample chat JSON: $e");
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'youtube_url': url}), // or local path if your backend supports it
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final msg = data['message'] ?? 'No message';
+        final session = data['session_id'] ?? '';
+        setState(() {
+          _sessionId = session;
+        });
+        // Optionally show a confirmation
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$msg (session: $session)')),
+        );
+      } else {
+        if (kDebugMode) {
+          print('Error uploading video: ${response.body}');
+        }
       }
-      setState(() {
-        _sessionId = "test_session_123";
-        _chatMessages = [
-          "AI: Hello! This is a sample conversation.",
-          "User: Great, let's get started!"
-        ];
-      });
-    }
-  }
-
-  // ------------------------------------------------------------------------
-  // (B) Load Transcript from local JSON
-  // ------------------------------------------------------------------------
-  Future<void> _loadLocalTranscriptJson() async {
-    try {
-      final String dataString =
-          await rootBundle.loadString('assets/transcripts/text_to_timestamp.json');
-      final Map<String, dynamic> data = jsonDecode(dataString);
-
-      setState(() {
-        _textToTimestampMap = data.map((k, v) => MapEntry(k, v.toString()));
-      });
-
-      final items = <TranscriptItem>[];
-      _textToTimestampMap.forEach((content, time) {
-        items.add(TranscriptItem(time: time, content: content));
-      });
-      setState(() {
-        _transcript = items;
-      });
     } catch (e) {
       if (kDebugMode) {
-        print('Error loading local JSON: $e');
+        print('Exception in _uploadVideoToServer: $e');
       }
     }
   }
 
   // ------------------------------------------------------------------------
-  // (C) Load the Video
+  // (B) Ask a Question -> Refresh Chat & Timestamps
   // ------------------------------------------------------------------------
-  /// Called when user either pastes a link or picks a file.
+  Future<void> _askServer(String question) async {
+    if (_sessionId == null || _sessionId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session not established. Please upload video first.')),
+      );
+      return;
+    }
+
+    final apiUrl = 'http://127.0.0.1:5000/ask';
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'session_id': _sessionId,
+          'question': question,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final conversation = data['conversation'] as List<dynamic>? ?? [];
+        final relevantStamps = data['relevant_time_stamps'] as List<dynamic>? ?? [];
+
+        // Convert conversation to chat lines
+        final newChatList = <String>[];
+        for (var item in conversation) {
+          // item is like {"USER": "..."} or {"AI": "..."}
+          if (item is Map) {
+            if (item.containsKey('USER')) {
+              newChatList.add('User: ${item['USER']}');
+            } else if (item.containsKey('AI')) {
+              newChatList.add('AI: ${item['AI']}');
+            }
+          }
+        }
+
+        // Convert relevant_time_stamps to a new transcript
+        // e.g. "timestamp": 127.86 -> "2:07"
+        final newTranscript = <TranscriptItem>[];
+        for (var stamp in relevantStamps) {
+          if (stamp is Map) {
+            final sentence = stamp['sentence']?.toString() ?? '';
+            final rawTs = stamp['timestamp'] ?? 0.0;
+            double sec = 0.0;
+            if (rawTs is int) {
+              sec = rawTs.toDouble();
+            } else if (rawTs is double) {
+              sec = rawTs;
+            }
+            // Convert to mm:ss
+            final tsString = _formatTimestamp(sec); 
+            newTranscript.add(TranscriptItem(time: tsString, content: sentence));
+          }
+        }
+
+        setState(() {
+          _chatMessages = newChatList;
+          _transcript = newTranscript;
+          _sessionId = data['session_id'] ?? _sessionId;
+        });
+      } else {
+        if (kDebugMode) {
+          print('Error from ask server: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Exception in _askServer: $e');
+      }
+    }
+  }
+
+  // Helper: Convert e.g. 127.86 -> "2:07"
+  String _formatTimestamp(double seconds) {
+    final s = seconds.floor() % 60;
+    final m = (seconds.floor() ~/ 60) % 60;
+    final h = (seconds.floor() ~/ 3600);
+    if (h > 0) {
+      return '${h.toString()}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    } else {
+      return '${m.toString()}:${s.toString().padLeft(2, '0')}';
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // (C) Load/Play the Video (Local or YouTube)
+  // ------------------------------------------------------------------------
   Future<void> _loadVideoFromLink() async {
     final link = _videoLinkController.text.trim();
     if (link.isEmpty) {
@@ -148,12 +216,13 @@ class _ChatPageState extends State<ChatPage> {
       );
       return;
     }
+
     setState(() {
       _videoUrl = link;
       _isLoading = true;
       _videoReady = false;
       _isYouTube = _isYouTubeLink(link);
-      _webLocalVideoUrl = null; // reset
+      _webLocalVideoUrl = null;
     });
 
     // Dispose old controllers
@@ -165,8 +234,13 @@ class _ChatPageState extends State<ChatPage> {
     _youtubeController = null;
 
     try {
+      // If it's YouTube, call the upload API to get session_id, then load
       if (_isYouTube) {
-        final videoId = _extractYouTubeVideoId(link);
+        // 1) Upload to the server for transcript
+        await _uploadVideoToServer(link);
+
+        // 2) Extract YT ID and load in the YT Player
+        final videoId = YoutubePlayerController.convertUrlToId(link);
         if (videoId == null) throw Exception("Invalid YouTube link");
         _youtubeController = YoutubePlayerController(
           params: const YoutubePlayerParams(showFullscreenButton: true),
@@ -177,30 +251,26 @@ class _ChatPageState extends State<ChatPage> {
           _isLoading = false;
         });
       } else {
-        // If not YouTube:
+        // If it's not YouTube: local or network
         if (kIsWeb) {
-          // On web, we cannot do VideoPlayerController.file(File(...)) for blob or file://
-          // So we store the link in _webLocalVideoUrl if it starts with 'blob:' or 'file:'
           if (link.startsWith('blob:') || link.startsWith('file:')) {
-            // We'll use _LocalWebVideoPlayer fallback
+            // Web local fallback
             setState(() {
               _webLocalVideoUrl = link;
               _videoReady = true;
               _isLoading = false;
             });
-            return; // Don't proceed with normal Chewie
-          }
-          // Otherwise, if it's a normal http or https link, we can do network
-          if (link.startsWith('http')) {
+          } else if (link.startsWith('http')) {
+            // Web network
             await _setupChewieNetwork(link);
           } else {
-            throw Exception('Unsupported local link on web: $link');
+            throw Exception('Unsupported link on web: $link');
           }
         } else {
-          // On mobile/desktop
+          // Mobile/desktop
           if (_isLocalFile(link)) {
-            final filePath =
-                link.startsWith('file://') ? link.substring(7) : link;
+            // Possibly upload to server if needed. Right now we skip it.
+            final filePath = link.startsWith('file://') ? link.substring(7) : link;
             await _setupChewieFile(filePath);
           } else if (link.startsWith('http')) {
             await _setupChewieNetwork(link);
@@ -261,7 +331,6 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
-  /// Let user pick a local video via file picker
   Future<void> _pickLocalVideo() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -271,7 +340,6 @@ class _ChatPageState extends State<ChatPage> {
       if (result != null && result.files.isNotEmpty) {
         final path = result.files.single.path;
         if (path != null) {
-          // Convert to file://
           final fileUri = 'file://$path';
           setState(() {
             _videoLinkController.text = fileUri;
@@ -290,100 +358,61 @@ class _ChatPageState extends State<ChatPage> {
     return link.contains("youtube.com") || link.contains("youtu.be");
   }
 
-  String? _extractYouTubeVideoId(String url) {
-    return YoutubePlayerController.convertUrlToId(url);
-  }
-
   bool _isLocalFile(String link) {
     return link.startsWith("file://") || File(link).isAbsolute;
   }
 
   // ------------------------------------------------------------------------
-  // (D) Seek / Transcript
+  // (D) Seek Video from Transcript
   // ------------------------------------------------------------------------
   void _seekVideoToTime(String time) {
+    // time is something like "2:07" or "01:15:23"
+    // parse that into total seconds
+    final parts = time.split(':').reversed.toList(); // ["07", "2"] or ["23","15","01"]
+    int totalSeconds = 0;
+    for (int i = 0; i < parts.length; i++) {
+      final val = int.tryParse(parts[i]) ?? 0;
+      totalSeconds += val * (60 ^ i); // 60^0=1, 60^1=60, 60^2=3600
+    }
+
+    // YouTube or local
     if (_isYouTube && _youtubeController != null) {
-      _seekYouTube(time);
+      _youtubeController?.seekTo(seconds: totalSeconds.toDouble());
+      _youtubeController?.playVideo();
     } else if (kIsWeb && _webLocalVideoUrl != null) {
-      // If we are using the HTML fallback, we can't programmatically set the time easily
-      // without more advanced JavaScript bridging. We might skip or do partial bridging.
-      // For now, we do nothing or show a message:
+      // Not implemented seeking for web local fallback
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Seeking not implemented for web local fallback.')),
       );
     } else {
-      _seekChewie(time);
-    }
-  }
-
-  void _seekYouTube(String time) {
-    try {
-      final parts = time.split(':').map(int.parse).toList();
-      int seconds = 0;
-      if (parts.length == 2) {
-        seconds = parts[0] * 60 + parts[1];
-      } else if (parts.length == 3) {
-        seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-      }
-      _youtubeController?.seekTo(seconds: seconds.toDouble());
-      _youtubeController?.playVideo();
-    } catch (e) {
-      if (kDebugMode) print('Error seeking YouTube time: $e');
-    }
-  }
-
-  void _seekChewie(String time) {
-    try {
-      final parts = time.split(':').map(int.parse).toList();
-      int seconds = 0;
-      if (parts.length == 2) {
-        seconds = parts[0] * 60 + parts[1];
-      } else if (parts.length == 3) {
-        seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-      }
-      final position = Duration(seconds: seconds);
-      _videoController?.seekTo(position);
+      _videoController?.seekTo(Duration(seconds: totalSeconds));
       _videoController?.play();
-    } catch (e) {
-      if (kDebugMode) print('Error seeking local video time: $e');
     }
   }
 
   // ------------------------------------------------------------------------
-  // (E) Chat logic: Send message -> Refresh conversation
+  // (E) Chat logic: user enters a question
   // ------------------------------------------------------------------------
   Future<void> _sendChatMessage() async {
     final userMessage = _chatController.text.trim();
     if (userMessage.isEmpty) return;
 
+    // Clear dummy chat if it's the first real query
     if (_dummyChatActive) {
       setState(() {
         _chatMessages.clear();
         _dummyChatActive = false;
       });
     }
+
+    // Show user message immediately
     setState(() {
       _chatMessages.add("User: $userMessage");
       _chatController.clear();
     });
 
-    // In real usage, you'd call your API here, sending:
-    //  - session_id
-    //  - user_message
-    //  - filepath = _videoUrl
-    await Future.delayed(const Duration(seconds: 1));
-    final updatedSessionId = _sessionId ?? "test_session_123";
-
-    final updatedConversation = [
-      ..._chatMessages,
-      "AI: The server acknowledges your file path: ${_videoUrl ?? 'no file path'}",
-      "AI: This is a dummy response from the server."
-    ];
-
-    setState(() {
-      _sessionId = updatedSessionId;
-      _chatMessages = updatedConversation;
-    });
+    // Actually call the "ask" API
+    await _askServer(userMessage);
   }
 
   // ------------------------------------------------------------------------
@@ -531,7 +560,7 @@ class _ChatPageState extends State<ChatPage> {
                                       videoUrl: _webLocalVideoUrl!,
                                     );
                                   }
-                                  // 3) Otherwise, Chewie (mobile/desktop or web network)
+                                  // 3) Otherwise, Chewie for local or HTTP video
                                   if (_chewieController != null) {
                                     return AspectRatio(
                                       aspectRatio:
@@ -541,7 +570,7 @@ class _ChatPageState extends State<ChatPage> {
                                       ),
                                     );
                                   }
-                                  // If we reach here, no player available
+                                  // If we reach here, no player
                                   return const Center(child: Text('Video Error'));
                                 }),
                               ),
@@ -557,6 +586,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                     const SizedBox(width: 10),
+
                     // RIGHT: Chat region
                     Expanded(
                       flex: 1,
@@ -573,6 +603,7 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                             ),
                             const Divider(),
+                            // conversation
                             Expanded(
                               child: ListView.builder(
                                 itemCount: _chatMessages.length,
@@ -603,13 +634,14 @@ class _ChatPageState extends State<ChatPage> {
                                 },
                               ),
                             ),
+                            // chat input
                             Row(
                               children: [
                                 Expanded(
                                   child: TextField(
                                     controller: _chatController,
                                     decoration: const InputDecoration(
-                                      hintText: "Type your message...",
+                                      hintText: "Ask a question...",
                                     ),
                                     onSubmitted: (_) => _sendChatMessage(),
                                   ),
@@ -627,6 +659,7 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               ),
+
               // Transcript at bottom
               Container(
                 height: 200.0,
@@ -653,6 +686,7 @@ class _ChatPageState extends State<ChatPage> {
                               style: const TextStyle(color: Colors.black),
                             ),
                             onTap: () {
+                              // Seek video to that timestamp
                               _seekVideoToTime(item.time);
                             },
                           );
@@ -673,9 +707,8 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
-/// This widget uses an HTML <video> element to play a local file
-/// on Flutter Web. By default, the standard video_player plugin can't handle
-/// file:// or blob: URLs on web.
+/// Fallback for local blob/data URLs on Flutter Web.
+/// By default, video_player doesn't handle `file://` or `blob:` URLs.
 class _LocalWebVideoPlayer extends StatefulWidget {
   final String videoUrl;
   const _LocalWebVideoPlayer({Key? key, required this.videoUrl}) : super(key: key);
@@ -699,15 +732,11 @@ class _LocalWebVideoPlayerState extends State<_LocalWebVideoPlayer> {
       final video = html.VideoElement()
         ..src = url
         ..controls = true
-        ..autoplay = true       // Let it attempt to autoplay
-        ..muted = true          // Mute so autoplay is allowed
+        ..autoplay = true  // Browsers often require muted to auto-play
+        ..muted = true
         ..style.width = '100%'
         ..style.height = '100%'
         ..style.border = 'none';
-
-      // Optionally remove forced .play() to rely on user pressing 'Play'
-      // video.onCanPlay.listen((_) => video.play());
-
       return video;
     });
   }
