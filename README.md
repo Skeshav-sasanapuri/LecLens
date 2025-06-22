@@ -83,6 +83,7 @@ flutter run -d chrome
 ```
 
 ## 🗂️ Project Structure
+```bash
 LecLens/
 │
 ├── backend/
@@ -112,6 +113,7 @@ LecLens/
     │   └── chat_page.dart
     └── transcripts/
         └── transcript_item.dart
+```
 
 ## 🚧 Challenges We Faced
 
